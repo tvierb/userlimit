@@ -1,0 +1,10 @@
+[Unit]
+Description=Limit system usage of some users
+After=multi-user.target
+
+[Service]
+ExecStart=/opt/userlimit/userlimit1.pl
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
