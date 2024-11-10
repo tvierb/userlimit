@@ -37,30 +37,40 @@ foreach my $user (keys %{ $config->{ users }})
 
 $statefile //= "$FindBin::Bin/.userlimits.state";
 $state = LoadFile( $statefile ) if -f $statefile;
+
+# Save the state into a file an exit
 sub shutdown
 {
 	DumpFile($statefile, $state);
 	exit(0);
 }
 
+# terminate a user's login session
+# ( string -- )
 sub logoutUser
 {
 	my $user = shift;
 	`loginctl terminate-user $user`;
 }
 
+# lock a user's login account
+# ( string -- )
 sub lockUser
 {
 	my $user = shift;
 	`usermod -L -e 1 $user`;
 }
 
+# count how many processes a user is running
+# ( string -- )
 sub countProcesses
 {
 	my $user = shift;
 	return scalar split(/\n/, `pgrep -u $user`);
 }
 
+# open a info box on the user's desktop screen
+# ( string -- )
 sub warnUser
 {
 	my $user = shift;
@@ -75,6 +85,8 @@ sub warnUser
 	}
 }
 
+# Find out: is the account already locked?
+# ( string -- )
 sub isLocked
 {
 	my $user = shift;
@@ -85,6 +97,8 @@ sub isLocked
 	return 0;
 }
 
+# unlock a user's login account
+# ( string -- )
 sub unlock
 {
 	my $user = shift;
@@ -94,6 +108,7 @@ sub unlock
 $SIG{"INT"} = \&shutdown;
 $SIG{"TERM"} = \&shutdown;
 
+# mainloop
 while(4e4)
 {
 	sleep($dlay);
