@@ -27,7 +27,7 @@ The children should logout, suspend, hibernate or switch off the computer to pau
 
 Place the files anywhere -- for example in "/opt/userlimit/" .
 
-The program "userlimit1.pl" will read "limits.conf" and will write ".userlimits.state" in the same directory as where the program sits.
+The program "userlimit.pl" will read "limits.conf" and will write ".userlimits.state" in the same directory as where the program sits.
 
 Copy "sample-limits.conf" to "limits.conf" and add computer time limits for users (seconds).
 
@@ -45,6 +45,18 @@ To check the functionality without locking someone you can comment out the lines
 
 You also can stop the program and look into the state file to check the counters.
 
+## Changelog
+
+### Name clash when doing shell completion
+
+The filenames "userlimit.pl" and "userlimit.service" have too many chars in common.
+I don't want to enter more than two chars user:
+
+    vim us<TAB>
+
+-> Move the unit to a subdir.
+-> Renamed the program.
+
 ## TODO / Ideas
 
 ### "Add some time for user X only for today"
@@ -60,12 +72,6 @@ Idea:
 * write status into a file in the user's home directory from time to time.
 * every 5 minutes, but only when account is not blocked
 
-### Name clash when doing shell completion
-
-The file names "userlimit1.pl" and "userlimit.service" have too many chars in common.
-I don't want to enter more than two chars user:
-
-    vim us<TAB>
 
 ### More implementations
 
