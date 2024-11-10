@@ -11,6 +11,7 @@ use constant REVISION => "20241109";
 
 GetOptions(
 	'config=s' => \my $configfile,
+	'state=s' => \my $statefile,
 	'verbose' => \my $verbose,
 	'help'    => \my $need_help,
 );
@@ -34,7 +35,7 @@ foreach my $user (keys %{ $config->{ users }})
 	die("Missing 'weekend: <num>' in config of user '$user'") unless $config->{users}->{ $user }->{ weekend };
 }
 
-my $statefile = "$FindBin::Bin/.userlimits.state";
+$statefile //= "$FindBin::Bin/.userlimits.state";
 $state = LoadFile( $statefile ) if -f $statefile;
 sub shutdown
 {
