@@ -2,6 +2,7 @@
 
 use strict;
 use warnings;
+use Data::Dumper;
 use FindBin;
 use Getopt::Long;
 use POSIX qw(strftime);
@@ -113,6 +114,8 @@ sub unlock
 $SIG{"INT"} = \&shutdown;
 $SIG{"TERM"} = \&shutdown;
 
+my $t_last_info = time();
+
 # mainloop
 while(4e4)
 {
@@ -171,6 +174,12 @@ while(4e4)
 			$state->{ $user }->{ warned } = 0;
 			print "User $user has been reactivated\n";
 		}
+	}
+
+	if ((time() - $t_last_info) >= 15*60)
+	{
+		print Dumper( $state );
+		$t_last_info = time();
 	}
 }
 
