@@ -80,7 +80,12 @@ sub warnUser
 		my $xauth="/home/$user/.Xauthority";
 		if ($line =~ /\(([^\)]+)\)$/)
 		{
-			`DISPLAY=$1 XAUTHORITY="$xauth" xmessage "Deine Bildschirmzeit ist gleich zu Ende. Sichere Deine Daten und logge dich aus." &`; # fire and forget
+			my $disp = $1;
+			my $id = fork();
+			if ($id == 0) # am I the child?
+			{
+				`DISPLAY=$disp XAUTHORITY="$xauth" xmessage "Deine Bildschirmzeit ist gleich zu Ende. Sichere Deine Daten und logge dich aus."`; # fire and forget
+			}
 		}
 	}
 }
