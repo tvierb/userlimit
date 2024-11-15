@@ -37,7 +37,14 @@ foreach my $user (keys %{ $config->{ users }})
 }
 
 $statefile //= "$FindBin::Bin/.userlimit.state";
-$state = LoadFile( $statefile ) if -f $statefile;
+if (-f $statefile)
+{
+	print "Loading state from '$statefile'.\n";
+	$state = LoadFile( $statefile );
+}
+else {
+	print "State file '$statefile' not found. Counters start from 0.\n";
+}
 
 # Save the state into a file an exit
 sub shutdown
