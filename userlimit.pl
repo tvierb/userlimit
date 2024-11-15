@@ -126,6 +126,12 @@ my $t_last_info = time();
 # mainloop
 while(4e4)
 {
+	if ((time() - $t_last_info) >= 15*60)
+	{
+		print Dumper( $state );
+		$t_last_info = time();
+	}
+
 	sleep($dlay);
 
 	my $tme = time();
@@ -183,10 +189,5 @@ while(4e4)
 		}
 	}
 
-	if ((time() - $t_last_info) >= 15*60)
-	{
-		print Dumper( $state );
-		$t_last_info = time();
-	}
 }
 
