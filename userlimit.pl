@@ -45,6 +45,7 @@ if (-f $statefile)
 else {
 	print "State file '$statefile' not found. Counters start from 0.\n";
 }
+print "state: " . Dumper( $state );
 
 # Save the state into a file an exit
 sub shutdown
@@ -126,11 +127,6 @@ my $t_last_info = time();
 # mainloop
 while(4e4)
 {
-	if ((time() - $t_last_info) >= 15*60)
-	{
-		print Dumper( $state );
-		$t_last_info = time();
-	}
 
 	sleep($dlay);
 
@@ -189,5 +185,10 @@ while(4e4)
 		}
 	}
 
+	if ((time() - $t_last_info) >= 15*60)
+	{
+		print "state: " . Dumper( $state );
+		$t_last_info = time();
+	}
 }
 
