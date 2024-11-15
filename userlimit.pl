@@ -36,7 +36,7 @@ foreach my $user (keys %{ $config->{ users }})
 	die("Missing 'weekend: <num>' in config of user '$user'") unless $config->{users}->{ $user }->{ weekend };
 }
 
-$statefile //= "$FindBin::Bin/.userlimits.state";
+$statefile //= "$FindBin::Bin/.userlimit.state";
 $state = LoadFile( $statefile ) if -f $statefile;
 
 # Save the state into a file an exit
