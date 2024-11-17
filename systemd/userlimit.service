@@ -4,6 +4,7 @@ After=multi-user.target
 
 [Service]
 ExecStart=/opt/userlimit/userlimit.pl
+Restart=on-failure
 Type=simple
 
 [Install]
