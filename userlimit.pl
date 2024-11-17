@@ -163,7 +163,7 @@ while(4e4)
 			}
 			if (countProcesses( $user ))
 			{
-				terminateUser( $user );
+				logoutUser( $user );
 				$state->{ $user }->{ terminated } = 1;
 				print "User '$user' has been terminated.\n";
 			}
