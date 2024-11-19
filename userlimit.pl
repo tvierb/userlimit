@@ -1,5 +1,9 @@
 #!/usr/bin/perl
 
+# Q: There may be a problem with running again right after suspend:
+# The clock may still tell us the old date and see the duration played yesterday und lock the user.
+# A: wait a minute befor any actions?
+
 use strict;
 use warnings;
 use Data::Dumper;
@@ -8,7 +12,7 @@ use Getopt::Long;
 use POSIX qw(strftime);
 use YAML::Syck;
 
-use constant REVISION => "20241115";
+use constant REVISION => "20241119";
 
 GetOptions(
 	'config=s' => \my $configfile,
@@ -18,10 +22,10 @@ GetOptions(
 );
 my $state = {};
 my $config = {};
-my $dlay = 30;
+my $dlay = 30; # adding duration to user counter very 30 seconds
 my $warntime = 5*60; # 5 minutes
 
-print "$0 (REV " . REVISION . ") started.\n";
+print "userlimiter (REV " . REVISION . ") started.\n";
 $configfile //= "$FindBin::Bin/limits.conf";
 print "\$configfile=$configfile\n" if $verbose;
 $config = LoadFile( $configfile ); # may crash
@@ -47,6 +51,7 @@ else {
 }
 print "state: " . Dumper( $state );
 
+# -------------------------------------------------------------
 # Save the state into a file an exit
 sub shutdown
 {
@@ -54,6 +59,7 @@ sub shutdown
 	exit(0);
 }
 
+# -------------------------------------------------------------
 # terminate a user's login session
 # ( string -- )
 sub logoutUser
@@ -62,6 +68,7 @@ sub logoutUser
 	`loginctl terminate-user $user`;
 }
 
+# -------------------------------------------------------------
 # lock a user's login account
 # ( string -- )
 sub lockUser
@@ -70,6 +77,7 @@ sub lockUser
 	`usermod -L -e 1 $user`;
 }
 
+# -------------------------------------------------------------
 # count how many processes a user is running
 # ( string -- )
 sub countProcesses
@@ -78,6 +86,7 @@ sub countProcesses
 	return scalar split(/\n/, `pgrep -u $user`);
 }
 
+# -------------------------------------------------------------
 # open a info box on the user's desktop screen
 # ( string -- )
 sub warnUser
@@ -99,6 +108,7 @@ sub warnUser
 	}
 }
 
+# -------------------------------------------------------------
 # Find out: is the account already locked?
 # ( string -- )
 sub isLocked
@@ -111,6 +121,7 @@ sub isLocked
 	return 0;
 }
 
+# -------------------------------------------------------------
 # unlock a user's login account
 # ( string -- )
 sub unlock
@@ -119,24 +130,28 @@ sub unlock
 	`usermod -U -e 99999 $user`;
 }
 
+# =============================================================
+
 $SIG{"INT"} = \&shutdown;
 $SIG{"TERM"} = \&shutdown;
 
-my $t_last_info = time();
+# let's wait a minute so that the ntp sync can be ready
+print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
+sleep(60);
+
+my $t_last_info = 0;
 
 # mainloop
 while(4e4)
 {
-
-	sleep($dlay);
-
 	my $tme = time();
 	my $today = strftime("%F", localtime( $tme ));   # YYYY-mm-dd
 	my $weekday = strftime("%u", localtime( $tme )); # 1 = Mo, ..
 
 	foreach my $user (keys %{ $config->{ users } })
 	{
-		my $maxduration = $weekday <= 5 ? $config->{ users }->{ $user }->{ normal } : $config->{ users }->{ $user }->{ weekend };
+		my $maxduration = $weekday <= 5 ? $config->{ users }->{ $user }->{ normal }
+		                                : $config->{ users }->{ $user }->{ weekend };
 		$maxduration //= 3600; # set a default
 
 		# reset the state on a fresh new day:
@@ -153,35 +168,46 @@ while(4e4)
 			$state->{ $user }->{ duration } = $state->{ $user }->{ duration } + $dlay;
 		}
 
+		my $duration = $state->{ $user }->{ duration };
 		# Lock and kick out the user when reaching the limit:
-		if ($state->{ $user }->{ duration } >= $maxduration )
+		if ($duration >= $maxduration )
 		{
+			print "User '$user' has duration $duration  >= maxduration $maxduration\n";
 			if (! isLocked( $user ))
 			{
+				print "Locking the user account of '$user'\n";
 				lockUser( $user );
-				print "User '$user' has been locked.\n";
 			}
 			if (countProcesses( $user ))
 			{
+				print "Logging out user '$user'.\n";
 				logoutUser( $user );
 				$state->{ $user }->{ terminated } = 1;
-				print "User '$user' has been terminated.\n";
 			}
 		}
-		# warn the user 5 minutes before reaching the limit:
-		elsif ((! $state->{ $user }->{ warned }) && ($state->{ $user }->{ duration } >= ( $maxduration - $warntime )) )
+		else
 		{
-			warnUser( $user );
-			$state->{ $user }->{ warned } = 1;
-			print "User '$user' has been warned.\n";
-		}
-		# unlock a locked user when not reaching the limit:
-		elsif (isLocked( $user ))
-		{
-			unlock( $user );
-			$state->{ $user }->{ terminated } = 0;
-			$state->{ $user }->{ warned } = 0;
-			print "User $user has been reactivated\n";
+			if (isLocked( $user )) # unlock a locked user who has not reached the limit
+			{
+				unlock( $user );
+				$state->{ $user }->{ terminated } = 0;
+				print "User $user has been reactivated\n";
+			}
+
+			# warn the user 5 minutes before reaching the limit
+			if ($duration >= ( $maxduration - $warntime )) 
+			{
+				if (! $state->{ $user }->{ warned })
+				{
+					print "Warning the user '$user'.\n";
+					$state->{ $user }->{ warned } = 1;
+					warnUser( $user );
+				}
+			}
+			else
+			{
+				$state->{ $user }->{ warned } = 0;
+			}
 		}
 	}
 
@@ -190,5 +216,7 @@ while(4e4)
 		print "state: " . Dumper( $state );
 		$t_last_info = time();
 	}
+
+	sleep($dlay);
 }
 
