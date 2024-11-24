@@ -19,7 +19,7 @@ GetOptions(
 	'state=s' => \my $statefile,
 	'verbose' => \my $verbose,
 	'help'    => \my $need_help,
-	'addtime=s' => \my $addtime,
+	'addtime=s' => \my $addtime, # 1h1m1s
 );
 my $state = {};
 my $config = {};
@@ -69,10 +69,10 @@ if (defined($addtime))
 		print "ERROR: there's no new statefile. I bet you did not stop the service? You must stop the unit and execute this within 40 seconds.\n";
 		exit(1);
 	}
-	if ($addtime =~ /^([a-z_]+[a-z0-9_]*),([1-9][0-9]*)$/)
+	if ($addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
 	{
 		my $user = $1;
-		my $duration = $2;
+		my $duration = hms2secs( $2 );
 		if (defined($state->{ $user }))
 		{
 			print "Giving user '$user' $duration more seconds.\n";
@@ -80,6 +80,7 @@ if (defined($addtime))
 			$state->{ $user }->{ warned } = 0;
 			DumpFile($statefile, $state);
 			print "Saved the changed state file. Now start the userlimit unit again.\n";
+			print "new state: " . Dumper( $state );
 		}
 		else {
 			print "User '$user' no in state file data.\n";
@@ -275,3 +276,19 @@ sub fileage
 	return time() - $mtime;
 }
 
+# -------------------------------------------------------------
+sub hms2secs
+{
+	my $hms = shift;
+	$hms .= 's' if $hms !~ /[hms]$/; # append "s"
+	my $secs = 0;
+	while ($hms =~ /([0-9]+)([hms]+)/g)
+	{
+		my $amount = $1;
+		my $quantifier = $2;
+		$secs +=        $amount if $quantifier eq "s";
+		$secs +=   60 * $amount if $quantifier eq "m";
+		$secs += 3600 * $amount if $quantifier eq "h";
+	}
+	return $secs;
+}
