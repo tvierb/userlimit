@@ -12,23 +12,40 @@ use Getopt::Long;
 use POSIX qw(strftime);
 use YAML::Syck;
 
-use constant REVISION => "20241119";
+use constant REVISION => "20241123";
 
 GetOptions(
 	'config=s' => \my $configfile,
 	'state=s' => \my $statefile,
 	'verbose' => \my $verbose,
 	'help'    => \my $need_help,
+	'addtime=s' => \my $addtime,
 );
 my $state = {};
 my $config = {};
 my $dlay = 30; # adding duration to user counter very 30 seconds
 my $warntime = 5*60; # 5 minutes
-
 print "userlimiter (REV " . REVISION . ") started.\n";
-$configfile //= "$FindBin::Bin/limits.conf";
-print "\$configfile=$configfile\n" if $verbose;
+
+$configfile //= "/etc/userlimit.conf";        print "\$configfile=$configfile\n";
+$statefile //= "/var/run/userlimit.state";    print "\$statefile=$configfile\n";
+
+if (! -f $configfile)
+{
+	print "ERROR: Config file not found. Edit or move from old directory /opt/userlimit/.\n";
+	exit(1);
+}
+
 $config = LoadFile( $configfile ); # may crash
+if (-f $statefile)
+{
+	print "Loading state data from file $statefile\n";
+	$state = LoadFile( $statefile ) if -f $statefile;
+}
+else {
+	print "Not loading state data (not found). Starting from 0.\n";
+}
+
 die("I need at least one user in the config file '$configfile'") unless scalar keys %{ $config->{ users } };
 foreach my $user (keys %{ $config->{ users }})
 {
@@ -40,17 +57,135 @@ foreach my $user (keys %{ $config->{ users }})
 	die("Missing 'weekend: <num>' in config of user '$user'") unless $config->{users}->{ $user }->{ weekend };
 }
 
-$statefile //= "$FindBin::Bin/.userlimit.state";
-if (-f $statefile)
-{
-	print "Loading state from '$statefile'.\n";
-	$state = LoadFile( $statefile );
-}
-else {
-	print "State file '$statefile' not found. Counters start from 0.\n";
-}
 print "state: " . Dumper( $state );
+print "Hint: Stop the service and execute '$0 --addtime user1,duration' and start the service to give a user more time for today.\n";
 
+# Increase a users' day limit:
+# userlimit --addtime amv7,1200
+if (defined($addtime))
+{
+	if (fileage($statefile) > 40)
+	{
+		print "ERROR: there's no new statefile. I bet you did not stop the service? You must stop the unit and execute this within 40 seconds.\n";
+		exit(1);
+	}
+	if ($addtime =~ /^([a-z_]+[a-z0-9_]*),([1-9][0-9]*)$/)
+	{
+		my $user = $1;
+		my $duration = $2;
+		if (defined($state->{ $user }))
+		{
+			print "Giving user '$user' $duration more seconds.\n";
+			$state->{ $user }->{ limit } = $state->{ $user }->{ limit } + $duration; 
+			$state->{ $user }->{ warned } = 0;
+			DumpFile($statefile, $state);
+			print "Saved the changed state file. Now start the userlimit unit again.\n";
+		}
+		else {
+			print "User '$user' no in state file data.\n";
+		}
+	}
+	else {
+		print "ERROR: bad format for --addtime <user,seconds>. Changing nothing.\n";
+	}
+	exit(0);
+}
+
+# =============================================================
+
+# $SIG{"INT"} = \&shutdown;
+$SIG{"TERM"} = \&shutdown;
+
+# let's wait a minute so that the ntp sync can be ready
+print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
+sleep(60);
+
+my $t_last_info = 0;
+
+# mainloop
+while(4e4)
+{
+	my $tme = time();
+	my $today = strftime("%F", localtime( $tme ));   # YYYY-mm-dd
+	my $weekday = strftime("%u", localtime( $tme )); # 1 = Mo, ..
+
+	foreach my $user (keys %{ $config->{ users } })
+	{
+		my $maxduration = $weekday <= 5 ? $config->{ users }->{ $user }->{ normal }
+		                                : $config->{ users }->{ $user }->{ weekend };
+		$maxduration //= 3600; # set a default
+
+		# reset the state on a fresh new day:
+		if (! (defined($state->{ $user }->{ today }) && ($state->{ $user }->{ today } eq $today )))
+		{
+			$state->{ $user }->{ today } = $today;
+			$state->{ $user }->{ duration } = 0;
+			$state->{ $user }->{ terminated } = 0; # wird eignetl nicht verwendet
+			$state->{ $user }->{ warned } = 0;
+			$state->{ $user }->{ limit } = $maxduration; # with the limit in the state data we can change a day's limit
+		}
+
+		if (countProcesses( $user ))
+		{
+			$state->{ $user }->{ duration } = $state->{ $user }->{ duration } + $dlay;
+		}
+
+		my $duration  = $state->{ $user }->{ duration };
+		my $userlimit = $state->{ $user }->{ limit } // $maxduration;
+
+		# Lock and kick out the user when reaching the limit:
+		if ($duration >= $userlimit)
+		{
+			print "User '$user' has duration $duration  >= limit $userlimit\n";
+			if (! isLocked( $user ))
+			{
+				print "Locking the user account of '$user'\n";
+				lockUser( $user );
+			}
+			if (countProcesses( $user ))
+			{
+				print "Logging out user '$user'.\n";
+				logoutUser( $user );
+				$state->{ $user }->{ terminated } = 1;
+			}
+		}
+		else
+		{
+			if (isLocked( $user )) # unlock a locked user who has not reached the limit
+			{
+				unlock( $user );
+				$state->{ $user }->{ terminated } = 0;
+				print "User $user has been reactivated\n";
+			}
+
+			# warn the user 5 minutes before reaching the limit
+			if ($duration >= ( $userlimit - $warntime ))
+			{
+				if (! $state->{ $user }->{ warned })
+				{
+					print "Warning the user '$user'.\n";
+					$state->{ $user }->{ warned } = 1;
+					warnUser( $user );
+				}
+			}
+			else
+			{
+				$state->{ $user }->{ warned } = 0;
+			}
+		}
+	}
+
+	if ((time() - $t_last_info) >= 15*60)
+	{
+		print "state: " . Dumper( $state );
+		$t_last_info = time();
+	}
+
+	sleep($dlay);
+}
+exit(0);
+
+# =============================================================
 # -------------------------------------------------------------
 # Save the state into a file an exit
 sub shutdown
@@ -130,93 +265,13 @@ sub unlock
 	`usermod -U -e 99999 $user`;
 }
 
-# =============================================================
-
-$SIG{"INT"} = \&shutdown;
-$SIG{"TERM"} = \&shutdown;
-
-# let's wait a minute so that the ntp sync can be ready
-print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
-sleep(60);
-
-my $t_last_info = 0;
-
-# mainloop
-while(4e4)
+# -------------------------------------------------------------
+sub fileage
 {
-	my $tme = time();
-	my $today = strftime("%F", localtime( $tme ));   # YYYY-mm-dd
-	my $weekday = strftime("%u", localtime( $tme )); # 1 = Mo, ..
-
-	foreach my $user (keys %{ $config->{ users } })
-	{
-		my $maxduration = $weekday <= 5 ? $config->{ users }->{ $user }->{ normal }
-		                                : $config->{ users }->{ $user }->{ weekend };
-		$maxduration //= 3600; # set a default
-
-		# reset the state on a fresh new day:
-		if (! (defined($state->{ $user }->{ today }) && ($state->{ $user }->{ today } eq $today )))
-		{
-			$state->{ $user }->{ today } = $today;
-			$state->{ $user }->{ duration } = 0;
-			$state->{ $user }->{ terminated } = 0; # wird eignetl nicht verwendet
-			$state->{ $user }->{ warned } = 0;
-		}
-
-		if (countProcesses( $user ))
-		{
-			$state->{ $user }->{ duration } = $state->{ $user }->{ duration } + $dlay;
-		}
-
-		my $duration = $state->{ $user }->{ duration };
-		# Lock and kick out the user when reaching the limit:
-		if ($duration >= $maxduration )
-		{
-			print "User '$user' has duration $duration  >= maxduration $maxduration\n";
-			if (! isLocked( $user ))
-			{
-				print "Locking the user account of '$user'\n";
-				lockUser( $user );
-			}
-			if (countProcesses( $user ))
-			{
-				print "Logging out user '$user'.\n";
-				logoutUser( $user );
-				$state->{ $user }->{ terminated } = 1;
-			}
-		}
-		else
-		{
-			if (isLocked( $user )) # unlock a locked user who has not reached the limit
-			{
-				unlock( $user );
-				$state->{ $user }->{ terminated } = 0;
-				print "User $user has been reactivated\n";
-			}
-
-			# warn the user 5 minutes before reaching the limit
-			if ($duration >= ( $maxduration - $warntime )) 
-			{
-				if (! $state->{ $user }->{ warned })
-				{
-					print "Warning the user '$user'.\n";
-					$state->{ $user }->{ warned } = 1;
-					warnUser( $user );
-				}
-			}
-			else
-			{
-				$state->{ $user }->{ warned } = 0;
-			}
-		}
-	}
-
-	if ((time() - $t_last_info) >= 15*60)
-	{
-		print "state: " . Dumper( $state );
-		$t_last_info = time();
-	}
-
-	sleep($dlay);
+	my $filename = shift;
+	my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+	                    $atime,$mtime,$ctime,$blksize,$blocks)
+	                       = stat($filename);
+	return time() - $mtime;
 }
 

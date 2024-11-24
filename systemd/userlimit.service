@@ -3,7 +3,7 @@ Description=Limit system usage of some users
 After=multi-user.target
 
 [Service]
-ExecStart=/opt/userlimit/userlimit.pl
+ExecStart=/usr/local/bin/userlimit.pl
 Restart=on-failure
 Type=simple
 
