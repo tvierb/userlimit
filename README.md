@@ -2,7 +2,7 @@
 
 ## What does it do?
 
-The programm loads the state file and limits.conf when starting.
+The programm loads the state file "/var/run/userlimit.state" and config from "/etc/limits.conf" when starting.
 
 There's a check every 30 seconds that adds 30 seconds to the spent computer time of each user who has active processes.
 
@@ -25,13 +25,11 @@ The children should logout, suspend, hibernate or switch off the computer to pau
 
 ## Installation
 
-Place the files anywhere -- for example in "/opt/userlimit/" .
+Place the files here:
 
-The program "userlimit.pl" will read "limits.conf" and will write ".userlimits.state" in the same directory as where the program sits.
-
-Copy "sample-limits.conf" to "limits.conf" and add computer time limits for users (seconds).
-
-Copy "systemd/userlimit.service" to "/etc/systemd/system/" and check the paths in the file.
+* /usr/local/bin/userlimit.pl
+* /etc/userlimit.conf
+* /etc/systemd/system/userlimit.service
 
 Start the program:
 
@@ -47,21 +45,15 @@ You also can stop the program and look into the state file to check the counters
 
 ## Changelog
 
-### Name clash when doing shell completion
-
-The filenames "userlimit.pl" and "userlimit.service" have too many chars in common.
-I don't want to enter more than two chars user:
-
-    vim us<TAB>
-
--> Move the unit to a subdir.
--> Renamed the program.
-
 ## TODO / Ideas
 
 ### "Add some time for user X only for today"
 
+I am not happy with the current "solution".
+
 ### Log current state once on an hour (half hour?)
+
+is done every minute
 
 ### How much time is left?
 
