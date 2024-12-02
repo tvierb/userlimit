@@ -30,21 +30,12 @@ print "userlimiter (REV " . REVISION . ") started.\n";
 $configfile //= "/etc/userlimit.conf";        print "\$configfile=$configfile\n";
 $statefile //= "/var/run/userlimit.state";    print "\$statefile=$configfile\n";
 
-if (! -f $configfile)
-{
-	print "ERROR: Config file not found. Edit or move from old directory /opt/userlimit/.\n";
-	exit(1);
-}
+die("ERROR: Config file '$configfile' not found. Edit or move from old directory /opt/userlimit/.") unless -f $configfile;
 
 $config = LoadFile( $configfile ); # may crash
-if (-f $statefile)
-{
-	print "Loading state data from file $statefile\n";
-	$state = LoadFile( $statefile ) if -f $statefile;
-}
-else {
-	print "Not loading state data (not found). Starting from 0.\n";
-}
+print "Loading state data from file $statefile\n";
+print "Not loading state data (not found). Starting from 0.\n" unless -f $statefile;
+$state = LoadFile( $statefile ) if -f $statefile;
 
 die("I need at least one user in the config file '$configfile'") unless scalar keys %{ $config->{ users } };
 foreach my $user (keys %{ $config->{ users }})
@@ -58,43 +49,65 @@ foreach my $user (keys %{ $config->{ users }})
 }
 
 print "state: " . Dumper( $state );
-print "Hint: Stop the service and execute '$0 --addtime user1,duration' and start the service to give a user more time for today.\n";
+print "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
 
 # Increase a users' day limit:
 # userlimit --addtime amv7,1200
-if (defined($addtime))
+#
+# Place a ticket file in /var/spool/userlimit/ and send SIGINT to running daemon
+if (defined($addtime) && $addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
 {
-	if (fileage($statefile) > 40)
+	my $tme = time();
+	my $user = $1;
+	my $duration = hms2secs( $2 );
+	my $ticket = {
+		user => $user,
+		duration => $duration,
+		fordate => strftime("%Y-%m-%d", localtime($tme)),
+	};
+	DumpFile("/var/spool/userlimit/$tme.ticket", $ticket);
+	print("Created a ticket in /var/spool/userlimit/\n");
+
+	# send signal
+	chomp(my $id = `cat /var/run/userlimit.pid`);
+	die("no running daemon found!?") unless $id > 0;
+	kill('INT', $id);
+	print "Sent a signal to the daemon with PID $id\n";
+	exit(0);
+}
+
+sub load_tickets
+{
+	print "Scanning for tickets\n";
+	foreach my $filename (glob("/var/spool/userlimit/*.ticket"))
 	{
-		print "ERROR: there's no new statefile. I bet you did not stop the service? You must stop the unit and execute this within 40 seconds.\n";
-		exit(1);
-	}
-	if ($addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
-	{
-		my $user = $1;
-		my $duration = hms2secs( $2 );
+		print "Processing ticket '$filename'\n";
+		my $ticket = LoadFile( $filename );
+		my $user = $ticket->{ user };
+		my $duration = $ticket->{ duration };
+		my $fordate  = $ticket->{ fordate  };
 		if (defined($state->{ $user }))
 		{
-			print "Giving user '$user' $duration more seconds.\n";
-			$state->{ $user }->{ limit } = $state->{ $user }->{ limit } + $duration; 
-			$state->{ $user }->{ warned } = 0;
-			DumpFile($statefile, $state);
-			print "Saved the changed state file. Now start the userlimit unit again.\n";
-			print "new state: " . Dumper( $state );
+			if ($state->{ $user }->{today} eq $ticket->{ fordate })
+			{
+				print "Topping up user '$user' by $duration seconds on $fordate\n";
+				$state->{ $user }->{ limit } = $state->{ $user }->{ limit } + $duration;
+				$state->{ $user }->{ warned } = 0;
+			}
+			else {
+				print "Ticket '$filename' had wrong date '$fordate'.\n";
+			}
 		}
 		else {
-			print "User '$user' no in state file data.\n";
+			print "Unknown user '$user' in ticket '$filename'.\n";
 		}
+		unlink($filename) or die("Cannot remove file '$filename'");
 	}
-	else {
-		print "ERROR: bad format for --addtime <user,seconds>. Changing nothing.\n";
-	}
-	exit(0);
 }
 
 # =============================================================
 
-# $SIG{"INT"} = \&shutdown;
+$SIG{"INT"} = \&load_tickets;
 $SIG{"TERM"} = \&shutdown;
 
 # let's wait a minute so that the ntp sync can be ready
@@ -186,6 +199,17 @@ while(4e4)
 }
 exit(0);
 
+# Write PID file:
+BEGIN {
+	open(my $fh, ">", "/var/run/userlimit.pid") or die("cannot write PID file");
+	print $fh $$;
+	close($fh);
+}
+
+# Remove PID file:
+END {
+	unlink("/var/run/userlimit.pid");
+}
 # =============================================================
 # -------------------------------------------------------------
 # Save the state into a file an exit
