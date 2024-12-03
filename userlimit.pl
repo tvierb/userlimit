@@ -263,6 +263,7 @@ sub warnUser
 			if ($id == 0) # am I the child?
 			{
 				`DISPLAY=$disp XAUTHORITY="$xauth" xmessage "Deine Bildschirmzeit ist gleich zu Ende. Sichere Deine Daten und logge dich aus."`; # fire and forget
+				exit(0);
 			}
 		}
 	}
