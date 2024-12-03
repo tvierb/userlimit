@@ -21,6 +21,38 @@ GetOptions(
 	'help'    => \my $need_help,
 	'addtime=s' => \my $addtime, # 1h1m1s
 );
+
+# Increase a users' day limit:
+# userlimit --addtime amv7,1200
+#
+# Place a ticket file in /var/spool/userlimit/ and send SIGINT to running daemon
+if (defined($addtime) && $addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
+{
+	my $tme = time();
+	my $user = $1;
+	my $duration = hms2secs( $2 );
+	my $ticket = {
+		user => $user,
+		duration => $duration,
+		fordate => strftime("%Y-%m-%d", localtime($tme)),
+	};
+	DumpFile("/var/spool/userlimit/$tme.ticket", $ticket);
+	print("Created a ticket in /var/spool/userlimit/\n");
+
+	# send signal
+	chomp(my $id = `cat /var/run/userlimit.pid`);
+	die("no running daemon found!?") unless $id > 0;
+	kill('INT', $id);
+	print "Sent a signal to the daemon with PID $id\n";
+	exit(0);
+}
+
+# daemon:
+
+# let's wait a minute so that the ntp sync can be ready
+print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
+sleep(60);
+
 my $state = {};
 my $config = {};
 my $dlay = 30; # adding duration to user counter very 30 seconds
@@ -51,30 +83,6 @@ foreach my $user (keys %{ $config->{ users }})
 print "state: " . Dumper( $state );
 print "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
 
-# Increase a users' day limit:
-# userlimit --addtime amv7,1200
-#
-# Place a ticket file in /var/spool/userlimit/ and send SIGINT to running daemon
-if (defined($addtime) && $addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
-{
-	my $tme = time();
-	my $user = $1;
-	my $duration = hms2secs( $2 );
-	my $ticket = {
-		user => $user,
-		duration => $duration,
-		fordate => strftime("%Y-%m-%d", localtime($tme)),
-	};
-	DumpFile("/var/spool/userlimit/$tme.ticket", $ticket);
-	print("Created a ticket in /var/spool/userlimit/\n");
-
-	# send signal
-	chomp(my $id = `cat /var/run/userlimit.pid`);
-	die("no running daemon found!?") unless $id > 0;
-	kill('INT', $id);
-	print "Sent a signal to the daemon with PID $id\n";
-	exit(0);
-}
 
 sub load_tickets
 {
@@ -110,9 +118,6 @@ sub load_tickets
 $SIG{"INT"} = \&load_tickets;
 $SIG{"TERM"} = \&shutdown;
 
-# let's wait a minute so that the ntp sync can be ready
-print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
-sleep(60);
 
 my $t_last_info = 0;
 
