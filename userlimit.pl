@@ -20,6 +20,7 @@ GetOptions(
 	'verbose' => \my $verbose,
 	'help'    => \my $need_help,
 	'addtime=s' => \my $addtime, # 1h1m1s
+	'ping'  => \my $do_ping,
 );
 
 # Increase a users' day limit:
@@ -39,35 +40,30 @@ if (defined($addtime) && $addtime =~ /^([a-z_]+[a-z0-9_]*),(.+)$/)
 	DumpFile("/var/spool/userlimit/$tme.ticket", $ticket);
 	print("Created a ticket in /var/spool/userlimit/\n");
 
-	# send signal
-	chomp(my $id = `cat /var/run/userlimit.pid`);
-	die("no running daemon found!?") unless $id > 0;
-	kill('INT', $id);
-	print "Sent a signal to the daemon with PID $id\n";
+	send_signal('INT'); # send signal
+	exit(0);
+}
+
+if ($do_ping)
+{
+	send_signal('INT');
 	exit(0);
 }
 
 # daemon:
 
-# let's wait a minute so that the ntp sync can be ready
-print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
-sleep(60);
+print "userlimiter (REV " . REVISION . ") started.\n";
 
 my $state = {};
 my $config = {};
 my $dlay = 30; # adding duration to user counter very 30 seconds
 my $warntime = 5*60; # 5 minutes
-print "userlimiter (REV " . REVISION . ") started.\n";
 
 $configfile //= "/etc/userlimit.conf";        print "\$configfile=$configfile\n";
-$statefile //= "/var/run/userlimit.state";    print "\$statefile=$configfile\n";
 
 die("ERROR: Config file '$configfile' not found. Edit or move from old directory /opt/userlimit/.") unless -f $configfile;
 
 $config = LoadFile( $configfile ); # may crash
-print "Loading state data from file $statefile\n";
-print "Not loading state data (not found). Starting from 0.\n" unless -f $statefile;
-$state = LoadFile( $statefile ) if -f $statefile;
 
 die("I need at least one user in the config file '$configfile'") unless scalar keys %{ $config->{ users } };
 foreach my $user (keys %{ $config->{ users }})
@@ -80,13 +76,27 @@ foreach my $user (keys %{ $config->{ users }})
 	die("Missing 'weekend: <num>' in config of user '$user'") unless $config->{users}->{ $user }->{ weekend };
 }
 
-print "state: " . Dumper( $state );
-print "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
+# let's wait a minute so that the ntp sync can be ready
+print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
+sleep(60);
 
+print "Loading state data from file $statefile\n";
+print "Not loading state data (not found). Starting from 0.\n" unless -f $statefile;
+$statefile //= "/var/run/userlimit.state";
+print "\$statefile=$configfile\n";
+$state = LoadFile( $statefile ) if -f $statefile;
+print "state: " . Dumper($state);
+if (load_tickets())
+{
+	print "new state: " . Dumper($state);
+}
+
+print "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
 
 sub load_tickets
 {
 	print "Scanning for tickets\n";
+	my $had_change = 0;
 	foreach my $filename (glob("/var/spool/userlimit/*.ticket"))
 	{
 		print "Processing ticket '$filename'\n";
@@ -101,6 +111,7 @@ sub load_tickets
 				print "Topping up user '$user' by $duration seconds on $fordate\n";
 				$state->{ $user }->{ limit } = $state->{ $user }->{ limit } + $duration;
 				$state->{ $user }->{ warned } = 0;
+				$had_change = 1;
 			}
 			else {
 				print "Ticket '$filename' had wrong date '$fordate'.\n";
@@ -111,11 +122,21 @@ sub load_tickets
 		}
 		unlink($filename) or die("Cannot remove file '$filename'");
 	}
+	return $had_change;
+}
+
+sub sigint_handler
+{
+	print "state: " . Dumper($state);
+	if (load_tickets())
+	{
+		print "new state: " . Dumper($state);
+	}
 }
 
 # =============================================================
 
-$SIG{"INT"} = \&load_tickets;
+$SIG{"INT"} = \&sigint_handler;
 $SIG{"TERM"} = \&shutdown;
 
 
@@ -322,3 +343,14 @@ sub hms2secs
 	}
 	return $secs;
 }
+
+sub send_signal
+{
+	my $sig = shift;
+	$sig //= 'INT';
+	chomp(my $id = `cat /var/run/userlimit.pid`);
+	die("no running daemon found!?") unless $id > 0;
+	kill( $sig , $id);
+	print "Sent signal '$sig' to the daemon with PID $id\n";
+}
+
