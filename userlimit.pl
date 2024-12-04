@@ -76,6 +76,11 @@ foreach my $user (keys %{ $config->{ users }})
 	die("Missing 'weekend: <num>' in config of user '$user'") unless $config->{users}->{ $user }->{ weekend };
 }
 
+# Write PID file:
+open(my $fh, ">", "/var/run/userlimit.pid") or die("cannot write PID file");
+print $fh $$;
+close($fh);
+
 # let's wait a minute so that the ntp sync can be ready
 print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
 sleep(60);
@@ -120,7 +125,11 @@ sub load_tickets
 		else {
 			print "Unknown user '$user' in ticket '$filename'.\n";
 		}
-		unlink($filename) or die("Cannot remove file '$filename'");
+		if (! unlink($filename))
+		{
+			print "ERROR: Cannot remove file '$filename'\n";
+			shut_all_down();
+		}
 	}
 	return $had_change;
 }
@@ -137,7 +146,7 @@ sub sigint_handler
 # =============================================================
 
 $SIG{"INT"} = \&sigint_handler;
-$SIG{"TERM"} = \&shutdown;
+$SIG{"TERM"} = \&shut_all_down;
 
 
 my $t_last_info = 0;
@@ -223,25 +232,18 @@ while(4e4)
 
 	sleep($dlay);
 }
+
 exit(0);
 
-# Write PID file:
-BEGIN {
-	open(my $fh, ">", "/var/run/userlimit.pid") or die("cannot write PID file");
-	print $fh $$;
-	close($fh);
-}
 
-# Remove PID file:
-END {
-	unlink("/var/run/userlimit.pid");
-}
 # =============================================================
 # -------------------------------------------------------------
 # Save the state into a file an exit
-sub shutdown
+sub shut_all_down
 {
 	DumpFile($statefile, $state);
+	# Remove PID file:
+	unlink("/var/run/userlimit.pid");
 	exit(0);
 }
 
