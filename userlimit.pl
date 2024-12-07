@@ -12,7 +12,7 @@ use Getopt::Long;
 use POSIX qw(strftime);
 use YAML::Syck;
 
-use constant REVISION => "20241124";
+use constant REVISION => "20241207";
 
 GetOptions(
 	'config=s' => \my $configfile,
