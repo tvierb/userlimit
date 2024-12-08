@@ -60,7 +60,7 @@ my $dlay = 30; # adding duration to user counter very 30 seconds
 my $warntime = 5*60; # 5 minutes
 
 $configfile //= "/etc/userlimit.conf";        print "\$configfile=$configfile\n";
-$statefile //= "/var/run/userlimit.state";
+$statefile //= "/root/.userlimit.state";
 
 die("ERROR: Config file '$configfile' not found. Edit or move from old directory /opt/userlimit/.") unless -f $configfile;
 
