@@ -52,14 +52,14 @@ if ($do_ping)
 
 # daemon:
 
-print "userlimiter (REV " . REVISION . ") started.\n";
+print dt() . "userlimiter (REV " . REVISION . ") started.\n";
 
 my $state = {};
 my $config = {};
 my $dlay = 30; # adding duration to user counter very 30 seconds
 my $warntime = 5*60; # 5 minutes
 
-$configfile //= "/etc/userlimit.conf";        print "\$configfile=$configfile\n";
+$configfile //= "/etc/userlimit.conf";        print dt() . "\$configfile=$configfile\n";
 $statefile //= "/root/.userlimit.state";
 
 die("ERROR: Config file '$configfile' not found. Edit or move from old directory /opt/userlimit/.") unless -f $configfile;
@@ -83,28 +83,28 @@ print $fh $$;
 close($fh);
 
 # let's wait a minute so that the ntp sync can be ready
-print "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
+print dt() . "Sleeping 1 minute to be shure the time is right after suspend-recovery (we hope so)\n";
 sleep(60);
 
-print "Loading state data from file $statefile\n";
-print "Not loading state data (not found). Starting from 0.\n" unless -f $statefile;
-print "\$statefile=$configfile\n";
+print dt() . "Loading state data from file $statefile\n";
+print dt() . "Not loading state data (not found). Starting from 0.\n" unless -f $statefile;
+print dt() . "\$statefile=$configfile\n";
 $state = LoadFile( $statefile ) if -f $statefile;
-print "state: " . Dumper($state);
+print dt() . "state: " . Dumper($state);
 if (load_tickets())
 {
-	print "new state: " . Dumper($state);
+	print dt() . "new state: " . Dumper($state);
 }
 
-print "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
+print dt() . "Hint: Execute '$0 --addtime user1,duration' to give a user more time for today.\n";
 
 sub load_tickets
 {
-	print "Scanning for tickets\n";
+	print dt() . "Scanning for tickets\n";
 	my $had_change = 0;
 	foreach my $filename (glob("/var/spool/userlimit/*.ticket"))
 	{
-		print "Processing ticket '$filename'\n";
+		print dt() . "Processing ticket '$filename'\n";
 		my $ticket = LoadFile( $filename );
 		my $user = $ticket->{ user };
 		my $duration = $ticket->{ duration };
@@ -113,21 +113,21 @@ sub load_tickets
 		{
 			if ($state->{ $user }->{today} eq $ticket->{ fordate })
 			{
-				print "Topping up user '$user' by $duration seconds on $fordate\n";
+				print dt() . "Topping up user '$user' by $duration seconds on $fordate\n";
 				$state->{ $user }->{ limit } = $state->{ $user }->{ limit } + $duration;
 				$state->{ $user }->{ warned } = 0;
 				$had_change = 1;
 			}
 			else {
-				print "Ticket '$filename' had wrong date '$fordate'.\n";
+				print dt() . "Ticket '$filename' had wrong date '$fordate'.\n";
 			}
 		}
 		else {
-			print "Unknown user '$user' in ticket '$filename'.\n";
+			print dt() . "Unknown user '$user' in ticket '$filename'.\n";
 		}
 		if (! unlink($filename))
 		{
-			print "ERROR: Cannot remove file '$filename'\n";
+			print dt() . "ERROR: Cannot remove file '$filename'\n";
 			shut_all_down();
 		}
 	}
@@ -136,10 +136,10 @@ sub load_tickets
 
 sub sigint_handler
 {
-	print "state: " . Dumper($state);
+	print dt() . "state: " . Dumper($state);
 	if (load_tickets())
 	{
-		print "new state: " . Dumper($state);
+		print dt() . "new state: " . Dumper($state);
 	}
 }
 
@@ -185,15 +185,15 @@ while(4e4)
 		# Lock and kick out the user when reaching the limit:
 		if ($duration >= $userlimit)
 		{
-			print "User '$user' has duration $duration  >= limit $userlimit\n";
+			# print dt() . "User '$user' has duration $duration  >= limit $userlimit\n";
 			if (! isLocked( $user ))
 			{
-				print "Locking the user account of '$user'\n";
+				print dt() . "Locking the user account of '$user'\n";
 				lockUser( $user );
 			}
 			if (countProcesses( $user ))
 			{
-				print "Logging out user '$user'.\n";
+				print dt() . "Logging out user '$user'.\n";
 				logoutUser( $user );
 				$state->{ $user }->{ terminated } = 1;
 			}
@@ -204,7 +204,7 @@ while(4e4)
 			{
 				unlock( $user );
 				$state->{ $user }->{ terminated } = 0;
-				print "User $user has been reactivated\n";
+				print dt() . "User $user has been reactivated\n";
 			}
 
 			# warn the user 5 minutes before reaching the limit
@@ -212,7 +212,7 @@ while(4e4)
 			{
 				if (! $state->{ $user }->{ warned })
 				{
-					print "Warning the user '$user'.\n";
+					print dt() . "Warning the user '$user'.\n";
 					$state->{ $user }->{ warned } = 1;
 					warnUser( $user );
 				}
@@ -353,6 +353,13 @@ sub send_signal
 	chomp(my $id = `cat /var/run/userlimit.pid`);
 	die("no running daemon found!?") unless $id > 0;
 	kill( $sig , $id);
-	print "Sent signal '$sig' to the daemon with PID $id\n";
+	print dt() . "Sent signal '$sig' to the daemon with PID $id\n";
 }
 
+
+sub dt
+{
+	my $tme = shift;
+	$tme //= time();
+	return strftime("%Y-%m-%d %H:%M:%S ", localtime($tme));
+}
