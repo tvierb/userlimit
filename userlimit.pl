@@ -226,8 +226,16 @@ while(4e4)
 
 	if ((time() - $t_last_info) >= 15*60)
 	{
-		print "state: " . Dumper( $state );
+		print dt() . "state: " . Dumper( $state );
 		$t_last_info = time();
+		DumpFile($statefile, $state);
+		foreach my $user (keys %{ $config->{ users } })
+		{
+			my $userfile = "/home/$user/userlimit.state";
+			DumpFile( $userfile, $state->{ $user } );
+			`chown "$user" "$userfile"`;
+			`chmod 600 "$userfile"`;
+		}
 	}
 
 	sleep($dlay);
