@@ -202,6 +202,7 @@ while(4e4)
 		}
 		else
 		{
+			print dt() . "User $user has " . secs2hms( $userlimit - $duration ) . " left.\n";
 			if (isLocked( $user )) # unlock a locked user who has not reached the limit
 			{
 				unlock( $user );
@@ -373,3 +374,32 @@ sub dt
 	$tme //= time();
 	return strftime("%Y-%m-%d %H:%M:%S ", localtime($tme));
 }
+
+sub secs2hms
+{
+	my $secs = shift;
+	my $x;
+	my @result = ();
+	$x = int($secs / 3600);
+	if ($x > 0)
+	{
+		push(@result, $x . "h");
+		$secs -= (3600 * $x);
+	}
+	$x = int($secs / 60);
+	if ($x > 0)
+	{
+		push(@result, $x . "m");
+		$secs -= (60 * $x);
+	}
+
+	if ($secs > 0)
+	{
+		if (! scalar(@result))
+		{
+			push( @result, $secs . "s" );
+		}
+	}
+	return join(" ", @result);
+}
+
