@@ -12,7 +12,7 @@ use Getopt::Long;
 use POSIX qw(strftime);
 use YAML::Syck;
 
-use constant REVISION => "20241207";
+use constant REVISION => "20250903";
 
 GetOptions(
 	'config=s' => \my $configfile,
@@ -21,7 +21,11 @@ GetOptions(
 	'help'    => \my $need_help,
 	'addtime=s' => \my $addtime, # 1h1m1s
 	'ping'  => \my $do_ping,
-);
+) or die("FATAL: wrong options");
+
+# 20250903 Set handlers here so that adding time does not end the program..
+$SIG{"INT"} = \&sigint_handler;
+$SIG{"TERM"} = \&shut_all_down;
 
 # Increase a users' day limit:
 # userlimit --addtime amv7,1200
@@ -145,8 +149,6 @@ sub sigint_handler
 
 # =============================================================
 
-$SIG{"INT"} = \&sigint_handler;
-$SIG{"TERM"} = \&shut_all_down;
 
 
 my $t_last_info = 0;
