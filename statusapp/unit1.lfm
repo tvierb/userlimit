@@ -1,0 +1,42 @@
+object Form1: TForm1
+  Left = 2170
+  Height = 240
+  Top = 30
+  Width = 320
+  Align = alRight
+  Caption = 'userlimit status'
+  ClientHeight = 240
+  ClientWidth = 320
+  LCLVersion = '4.4.0.0'
+  object Shape1: TShape
+    Left = 62
+    Height = 65
+    Top = 40
+    Width = 65
+    Brush.Color = clRed
+    Visible = False
+  end
+  object Shape2: TShape
+    Left = 62
+    Height = 65
+    Top = 115
+    Width = 65
+    Brush.Color = clYellow
+    Visible = False
+    OnClick = Shape2Click
+  end
+  object Label1: TLabel
+    Left = 144
+    Height = 55
+    Top = 88
+    Width = 126
+    Caption = '999:99'
+    Font.Height = 40
+    ParentFont = False
+  end
+  object Timer1: TTimer
+    OnTimer = Timer1Timer
+    Left = 208
+    Top = 40
+  end
+end
