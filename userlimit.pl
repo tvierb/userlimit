@@ -1,4 +1,11 @@
-#!/usr/bin/perl
+
+
+
+
+# Changes:
+#   * 20251214 The tool now writes "timeleft=..." into a file /var/cache/userlimit/<userid>
+#   * the rights of that file should be   r--r--r-- /var/cache/userlimit/<userid>
+#   * there is also a new GUI program (freepascal/lazarus) with a timer display and a traffic light.
 
 # Q: There may be a problem with running again right after suspend:
 # The clock may still tell us the old date and see the duration played yesterday und lock the user.
@@ -203,6 +210,7 @@ while(4e4)
 		else
 		{
 			print dt() . "User $user has " . secs2hms( $userlimit - $duration ) . " left.\n";
+			writeUserData( $user, {timeleft => $userlimit - $duration} );
 			if (isLocked( $user )) # unlock a locked user who has not reached the limit
 			{
 				unlock( $user );
@@ -238,6 +246,7 @@ exit(0);
 # Save the state into a file an exit
 sub shut_all_down
 {
+	print "shut all down\n";
 	DumpFile($statefile, $state);
 	# Remove PID file:
 	unlink("/var/run/userlimit.pid");
@@ -387,5 +396,37 @@ sub secs2hms
 		}
 	}
 	return join(" ", @result);
+}
+
+# -------------------------------------------------
+# Create a status file that can be read by only its owner (the user)
+# In this version I use the fct to store the data, too.
+sub writeUserData
+{
+	my ($user, $data) = @_;
+	my $cachedir = "/var/cache/userlimit";
+	if (! -d $cachedir)
+	{
+		print "ERROR: Cachedir not found: '$cachedir'\n";
+		return;
+	}
+
+	if (! -f "$cachedir/$user")
+	{
+		print "ERROR: Cachefile not found: '$cachedir/$user'\n";
+		return;
+	}
+
+	open (my $fh, ">$cachedir/$user");
+	if (! $fh)
+	{
+		print "ERROR: cANNOIT WRITE TO file '$cachedir/$user'\n";
+		return;
+	}
+	foreach my $key (sort keys %$data)
+	{
+		print $fh $key . "=" . $data->{$key} . "\n";
+	}
+	close($fh);
 }
 
